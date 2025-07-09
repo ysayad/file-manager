@@ -266,35 +266,67 @@ export function useRenderJobs() {
         formData.append('targetPath', currentPath);
       }
 
-      // Simulation du progrès d'upload
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => Math.min(prev + 10, 90));
-      }, 200);
+      // Utiliser XMLHttpRequest pour avoir une vraie progression
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        
+        // Timeout de 60 minutes pour les très gros fichiers
+        xhr.timeout = 60 * 60 * 1000;
+        
+        // Progression de l'upload
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) {
+            const progress = Math.round((event.loaded * 100) / event.total);
+            setUploadProgress(progress);
+          }
+        });
 
-      const response = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
+        // Gestion des erreurs
+        xhr.addEventListener('error', () => {
+          console.error('Upload error: Network error');
+          reject(new Error('Network error during upload'));
+        });
+
+        xhr.addEventListener('timeout', () => {
+          console.error('Upload error: Timeout');
+          reject(new Error('Upload timeout. The file might be too large or your connection is too slow.'));
+        });
+
+        // Réponse reçue
+        xhr.addEventListener('load', async () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            try {
+              const data = JSON.parse(xhr.responseText);
+              
+              // Recharger la liste après l'upload
+              await loadFileSystemItems(currentPath);
+              
+              resolve(data.file);
+            } catch (error) {
+              reject(new Error('Invalid response from server'));
+            }
+          } else {
+            try {
+              const errorData = JSON.parse(xhr.responseText);
+              reject(new Error(errorData.error || `HTTP ${xhr.status}: Upload failed`));
+            } catch {
+              reject(new Error(`HTTP ${xhr.status}: Upload failed`));
+            }
+          }
+        });
+
+        // Démarrer l'upload
+        xhr.open('POST', '/api/upload');
+        xhr.send(formData);
       });
-
-      clearInterval(progressInterval);
-      setUploadProgress(100);
-
-      if (!response.ok) {
-        throw new Error('Upload failed');
-      }
-
-      const data = await response.json();
       
-      // Recharger la liste après l'upload
-      await loadFileSystemItems(currentPath);
-      
-      return data.file;
     } catch (error) {
       console.error('Upload error:', error);
       return null;
     } finally {
       setUploading(false);
-      setTimeout(() => setUploadProgress(0), 1000);
+      // Garder la progression à 100% pendant un moment avant de la réinitialiser
+      setTimeout(() => setUploadProgress(0), 2000);
     }
   }, [currentPath, loadFileSystemItems]);
 

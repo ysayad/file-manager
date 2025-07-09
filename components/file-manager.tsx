@@ -10,6 +10,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
+import { formatFileSize, isValidFileType } from "@/lib/utils"
 import { Search, Upload, Zap, LayoutGrid, Clock, CheckCircle, XCircle, Loader2, Download, Trash2, RefreshCw, FolderPlus, Folder, File, ChevronRight, Home, ArrowLeft } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -622,7 +623,7 @@ export default function FileManager() {
     performBulkAction
   } = useRenderJobs()
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false)
-  const [renderCommand, setRenderCommand] = useState("ffmpeg -i {input} -vf scale=1280:720 -c:v h264_videotoolbox -b:v 2M {output}")
+  const [renderCommand, setRenderCommand] = useState("ffmpeg -i {input} -vf fps=2 -qscale:v 1 {output}")
   const [searchQuery, setSearchQuery] = useState("")
   const [activeTab, setActiveTab] = useState("files")
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -680,6 +681,12 @@ export default function FileManager() {
     const file = event.target.files?.[0]
     if (!file) return
 
+    // Validation du type de fichier uniquement
+    if (!isValidFileType(file.type)) {
+      toast.error("Type de fichier non supporté. Formats acceptés: MP4, AVI, MOV, MKV, WebM, JPEG, PNG, GIF, WebP, PDF");
+      return;
+    }
+
     try {
       const jobId = await uploadAndRender(file, renderCommand)
       if (jobId) {
@@ -689,7 +696,35 @@ export default function FileManager() {
         toast.error("Impossible de démarrer le rendu")
       }
     } catch (error) {
-      toast.error("Échec de l'upload")
+      console.error('Upload failed:', error)
+      
+      if (error instanceof Error) {
+        if (error.message.includes('timeout')) {
+          toast.error("Timeout d'upload. Le fichier est très volumineux ou votre connexion est lente.", {
+            duration: 8000
+          })
+        } else if (error.message.includes('Network error')) {
+          toast.error("Erreur réseau pendant l'upload. Vérifiez votre connexion internet.", {
+            duration: 6000
+          })
+        } else if (error.message.includes('File type not supported')) {
+          toast.error("Type de fichier non supporté. Formats acceptés: MP4, AVI, MOV, MKV, WebM, JPEG, PNG, GIF, WebP, PDF", {
+            duration: 8000
+          })
+        } else if (error.message.includes('Not enough disk space')) {
+          toast.error("Espace disque insuffisant sur le serveur", {
+            duration: 6000
+          })
+        } else {
+          toast.error(`Échec de l'upload: ${error.message}`, {
+            duration: 6000
+          })
+        }
+      } else {
+        toast.error("Échec de l'upload: Erreur inconnue", {
+          duration: 4000
+        })
+      }
     }
 
     // Reset input
@@ -835,16 +870,32 @@ export default function FileManager() {
                   </div>
                   
                   {uploading && (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       <div className="flex justify-between text-sm">
                         <span>Upload en cours...</span>
                         <span>{uploadProgress}%</span>
                       </div>
-                      <Progress value={uploadProgress} />
+                      <Progress value={uploadProgress} className="h-2" />
+                      <div className="text-xs text-gray-500 space-y-1">
+                        <div>⚠️ Pour les très gros fichiers, l'upload peut prendre plus d'une heure</div>
+                        <div>💡 La barre de progression reflète le vrai progrès de l'upload</div>
+                        <div>🚀 Timeout maximum: 60 minutes (aucune limite de taille)</div>
+                      </div>
                     </div>
                   )}
                   
-                  <div>
+                  <div className="space-y-2">
+                    <div className="text-xs text-gray-500 bg-blue-50 p-3 rounded-lg">
+                      <div className="font-medium mb-1">ℹ️ Informations importantes:</div>
+                      <ul className="space-y-1">
+                        <li>• Aucune limite de taille (upload illimité)</li>
+                        <li>• Formats supportés: MP4, AVI, MOV, MKV, WebM, JPEG, PNG, GIF, WebP, PDF</li>
+                        <li>• Upload optimisé pour les très gros fichiers (streaming)</li>
+                        <li>• Progression en temps réel</li>
+                        <li>• Timeout: 60 minutes maximum</li>
+                      </ul>
+                    </div>
+                    
                     <input
                       type="file"
                       ref={fileInputRef}
@@ -857,7 +908,14 @@ export default function FileManager() {
                       disabled={uploading}
                       className="w-full"
                     >
-                      {uploading ? "Upload en cours..." : "Sélectionner un fichier"}
+                      {uploading ? (
+                        <div className="flex items-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Upload en cours... ({uploadProgress}%)
+                        </div>
+                      ) : (
+                        "Sélectionner un fichier"
+                      )}
                     </Button>
                   </div>
                 </div>
