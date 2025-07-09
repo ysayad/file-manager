@@ -25,10 +25,10 @@ A file management and rendering system with integrated GPU acceleration, built w
 - **`/api/render/[jobId]`**: Specific job status
 - **`/api/download/[jobId]`**: Rendered file download
 
-### Queue System (Bull + Redis)
-- **Job Queue**: Persistent render task queue
+### Queue System (Bull + ioredis)
+- **Job Queue**: Persistent render task queue with Redis backend
 - **Worker Process**: GPU CLI command execution
-- **Progress Tracking**: Real-time progress updates
+- **Progress Tracking**: Real-time progress updates via ioredis
 - **Error Handling**: Error management and automatic retry
 
 ## 📦 Installation
@@ -46,36 +46,50 @@ npm install
 pnpm install
 ```
 
-3. **Configure Redis**
+**For Windows users:**
+```cmd
+# Install Node.js from https://nodejs.org/
+# Install Git from https://git-scm.com/download/win
+# Use Command Prompt or PowerShell for the commands above
+```
+
+3. **Configure Redis with ioredis**
+
+**Windows (using Docker):**
+```cmd
+# Install Docker Desktop from https://www.docker.com/products/docker-desktop
+# Run Redis container
+docker run -d --name redis -p 6379:6379 redis:latest
+```
+
+**Alternative - Windows with WSL:**
 ```bash
-# Install Redis (Ubuntu/Debian)
-sudo apt update
-sudo apt install redis-server
-
-# Start Redis
-sudo systemctl start redis-server
-sudo systemctl enable redis-server
-
-# Verify Redis is working
-redis-cli ping
+# Install WSL2 and Ubuntu
+wsl --install
+# Then in WSL terminal:
+sudo apt update && sudo apt install redis-server
+redis-server --daemonize yes
 ```
 
 4. **Configure environment variables**
 Create a `.env.local` file:
 ```env
+# For local Redis with ioredis
 REDIS_URL=redis://localhost:6379
 NEXT_PUBLIC_APP_NAME="GPU Render Studio"
 ```
 
-5. **Create necessary folders**
+5. **Install dependencies for the queue system**
 ```bash
-mkdir -p uploads/rendered
-chmod 755 uploads
+# ioredis is already included in package.json dependencies
+npm install
 ```
 
 ## 🖥️ GPU Configuration
 
 ### For FFmpeg with NVENC (NVIDIA)
+
+**Linux:**
 ```bash
 # Install FFmpeg with NVENC support
 sudo apt update
@@ -83,6 +97,16 @@ sudo apt install ffmpeg
 
 # Check GPU support
 ffmpeg -encoders | grep nvenc
+```
+
+**Windows:**
+```cmd
+# Download FFmpeg from https://ffmpeg.org/download.html#build-windows
+# Extract and add to PATH environment variable
+# Or use chocolatey: choco install ffmpeg
+
+# Check GPU support
+ffmpeg -encoders | findstr nvenc
 ```
 
 ### Example render commands
@@ -189,18 +213,22 @@ npm run dev -- -H 0.0.0.0
 
 ## 🛠️ Troubleshooting
 
-### Redis won't connect
+### Redis connection issues
 ```bash
-# Check status
-sudo systemctl status redis-server
+# Test Redis connection
+redis-cli ping
 
-# Restart Redis
-sudo systemctl restart redis-server
+# For Docker Redis container
+docker ps  # Check if redis container is running
+docker start redis  # Start if stopped
+
+# For WSL Redis
+wsl -d Ubuntu redis-cli ping
 ```
 
 ### GPU errors
 ```bash
-# Check NVIDIA drivers
+# Check NVIDIA drivers (Linux/Windows)
 nvidia-smi
 
 # Test FFmpeg with GPU
@@ -208,10 +236,11 @@ ffmpeg -f lavfi -i testsrc=duration=10:size=1920x1080:rate=30 -c:v h264_nvenc te
 ```
 
 ### Permission issues
-```bash
-# Grant permissions to folders
-sudo chown -R $USER:$USER uploads/
-chmod -R 755 uploads/
+
+**Windows:**
+```cmd
+# Run as administrator if permission issues persist
+# Check file access permissions for the application
 ```
 
 ## 📁 Project Structure
